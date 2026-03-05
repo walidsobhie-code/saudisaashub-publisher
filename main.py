@@ -1,34 +1,27 @@
 #!/usr/bin/env python3
 """
 SaudiSaaSHub Social Media Publisher
-Reads RSS feed → Generates platform-specific posts → Sends to Telegram
 """
 
 import os
 import feedparser
 import requests
-from datetime import datetime
 import json
 import re
+import random
 
-# Configuration
 RSS_URL = "https://saudisaashub.pages.dev/feed.xml"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
-
 STATE_FILE = "processed_articles.json"
 
-# Saudi Arabic accent hooks - question style
+# Saudi hooks - question style
 HOOKS = [
     "وش رايك في؟ 🤔",
     "هل سمعت عن هذا؟ 🤨",
     "والله تستاهل تعرف! 🙌",
-    "اقرى وأخبرني! 😱",
+    "اقرى واخبرني! 😱",
     "وش المثير بهالموضوع؟ 🔥",
-    "هل تعرف شنو يعني هذا؟ 🧐",
-    "والله موضوع مهم! 💡",
-    "شفت مثل هذا من قبل؟ 👀",
-    "وش رئيك؟ 🤔",
     "تعرفون شنو الجديد؟ 🎯"
 ]
 
@@ -44,155 +37,77 @@ def save_processed(processed):
         json.dump(processed, f)
 
 def get_latest_articles():
-    """Parse RSS feed and get latest articles"""
     feed = feedparser.parse(RSS_URL)
     articles = []
-    
-    for entry in feed.entries[:3]:  # Get latest 3
-        # Clean HTML from summary
+    for entry in feed.entries[:3]:
         summary = re.sub('<[^<]+?>', '', entry.get('summary', ''))
-        
         articles.append({
             'title': entry.get('title', '').strip(),
             'link': entry.get('link', '').strip(),
-            'summary': summary[:150].strip(),
-            'published': entry.get('published', '')
+            'summary': summary[:120].strip(),
         })
-    
     return articles
 
-def get_hashtags(title, categories=[]):
-    """Generate relevant hashtags"""
-    base_tags = ["#SaudiSaaS", "#السعودية", "#التقنية", "#Startups"]
-    
-    # Add category-specific tags
+def get_hashtags(title):
+    tags = ["#SaudiSaaS", "#السعودية", "#التقنية"]
     if any(x in title.lower() for x in ['saas', 'سحابية', 'برمجيات']):
-        base_tags.extend(["#SaaS", "#البرمجيات_السحابية"])
-    if any(x in title.lower() for x in ['fintech', 'مالية', 'دفع']):
-        base_tags.extend(["#FinTech", "#التقنية_المالية"])
-    if any(x in title.lower() for x in ['أمن', 'سيبراني']):
-        base_tags.extend(["#الأمن_السيبراني", "#CyberSecurity"])
+        tags.extend(["#SaaS", "#البرمجيات_السحابية"])
+    if any(x in title.lower() for x in ['fintech', 'مالية']):
+        tags.extend(["#FinTech"])
     if any(x in title.lower() for x in ['تجارة', 'متجر']):
-        base_tags.extend(["#تجارة_إلكترونية", "#ECommerce"])
-    if any(x in title.lower() for x in ['صحة', 'طبي']):
-        base_tags.extend(["#الصحة_الرقمية", "#Healthcare"])
-    if any(x in title.lower() for x in ['تعليم', 'تعلم']):
-        base_tags.extend(["#EdTech", "#التعليم"])
-    
-    return " ".join(base_tags[:10])
+        tags.extend(["#تجارة_إلكترونية"])
+    return " ".join(tags[:8])
 
-def generate_twitter_post(article):
-    """Twitter: Short + punchy + hook"""
-    import random
-    random.seed(hash(article['title']))
+def generate_twitter(article):
     hook = random.choice(HOOKS)
-    
-    title = article['title'][:80]
+    title = article['title'][:70]
     link = article['link']
     tags = get_hashtags(article['title'])
+    return f"{hook}\n\n{title}\n\n{link}\n\n{tags}"
+
+def generate_linkedin(article):
+    hook = random.choice(HOOKS)
+    title = article['title']
+    summary = article['summary']
+    link = article['link']
+    tags = get_hashtags(article['title'])
+    return f"{hook}\n\n{title}\n\n{summary}\n\n{link}\n\n{tags}\n\n#ريادة_الأعمال"
+
+def generate_instagram(article):
+    hook = random.choice(HOOKS).replace("؟", "!").replace("🤔", "💫")
+    title = article['title']
+    link = article['link']
+    return f"{hook}\n\n{title}\n\n👆 رابط الحلقة في البايو!\n\n#saudisaas #السعودية #technology #entrepreneur"
+
+def format_message(article):
+    twitter = generate_twitter(article)
+    linkedin = generate_linkedin(article)
+    instagram = generate_instagram(article)
+    tags = get_hashtags(article['title'])
     
-    return f"""{hook}
+    return f"""مقال جديد من SaudiSaaSHub
+━━━━━━━━━━━━━━━━━━━━━━
 
-{title}
+Twitter:
+{twitter}
 
-🔗 {link}
+LinkedIn:
+{linkedin}
+
+Instagram:
+{instagram}
+
+الرابط: {article['link']}
 
 {tags}"""
 
-def generate_linkedin_post(article):
-    """LinkedIn: Story + stats + professional"""
-    import random
-    random.seed(hash(article['title']))
-    hook = random.choice(HOOKS)
-    
-    title = article['title']
-    summary = article['summary']
-    link = article['link']
-    tags = get_hashtags(article['title'])
-    
-    return f"""{hook}
-
-{title}
-
-📝 {summary}
-
-👇 اقرأ المزيد:
-{link}
-
-{tags}
-
-#ريادة_الأعمال #السعودية #Tech"""
-
-def generate_instagram_post(article):
-    """Instagram: Emotional + hashtags + call to action"""
-    import random
-    random.seed(hash(article['title']))
-    hook = random.choice(HOOKS).replace("؟", "!").replace("🤔", "💫")
-    
-    title = article['title']
-    summary = article['summary']
-    link = article['link']
-    tags = " ".join(["#saudisaas", "#السعودية", "#technology", "#entrepreneur", "#startup", "#ريادة_الأعمال"])
-    
-    return f"""{hook}
-
-{title}
-
-📖 {summary}
-
-👆 طالع الرابط في البايو!
-
-{tags}
-
-#saudiasaas #السعودية_السعودة"""
-
-def format_telegram_message(article):
-    """Format complete message for Telegram"""
-    twitter = generate_twitter_post(article)
-    linkedin = generate_linkedin_post(article)
-    instagram = generate_instagram_post(article)
-    tags = get_hashtags(article['title'])
-    
-    message = f"""📰 *مقال جديد من SaudiSaaSHub*
-
-━━━━━━━━━━━━━━━━━━━━━━
-
-🐦 *Twitter:*
-{twitter}
-
-━━━━━━━━━━━━━━━━━━━━━━
-
-📱 *LinkedIn:*
-{linkedin}
-
-━━━━━━━━━━━━━━━━━━━━━━
-
-📸 *Instagram:*
-{instagram}
-
-━━━━━━━━━━━━━━━━━━━━━━
-
-🔗 *الرابط:*
-{article['link']}
-
-{tags}
-
-#SaudiSaaS"""
-
-    return message
-
 def send_to_telegram(message):
-    """Send message to Telegram"""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("Missing Telegram credentials")
+        print("Missing credentials")
         return False
     
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    data = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": "Markdown"
-    }
+    data = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
     
     try:
         response = requests.post(url, json=data, timeout=10)
@@ -202,48 +117,27 @@ def send_to_telegram(message):
         return False
 
 def main():
-    print("=" * 50)
     print("SaudiSaaSHub Publisher")
-    print("=" * 50)
     
-    # Get latest articles
     articles = get_latest_articles()
-    print(f"Found {len(articles)} articles in RSS")
+    print(f"Found {len(articles)} articles")
     
-    if not articles:
-        print("No articles found!")
-        return
-    
-    # Load processed
     processed = load_processed()
-    print(f"Already processed: {len(processed)} articles")
-    
-    # Find new articles
     new_articles = [a for a in articles if a['link'] not in processed]
-    print(f"New articles: {len(new_articles)}")
+    print(f"New: {len(new_articles)}")
     
     if not new_articles:
-        print("No new articles to post!")
+        print("No new articles!")
         return
     
-    # Process each new article
     for article in new_articles:
-        print(f"\nProcessing: {article['title'][:40]}...")
-        
-        # Format message
-        message = format_telegram_message(article)
-        
-        # Send to Telegram
+        print(f"Processing: {article['title'][:30]}...")
+        message = format_message(article)
         if send_to_telegram(message):
-            print("✅ Posted to Telegram!")
+            print("✅ Posted!")
             processed.append(article['link'])
-        else:
-            print("❌ Failed to post")
     
-    # Save state
     save_processed(processed)
-    
-    print("\n" + "=" * 50)
     print("Done!")
 
 if __name__ == "__main__":
