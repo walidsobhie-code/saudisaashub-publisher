@@ -2,8 +2,8 @@ name: Auto-Post to Social Media
 
 on:
   schedule:
-    # Run once daily at 9 AM Saudi time (UTC 6)
-    - cron: '0 6 * * *'
+    # Run every 6 hours
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
