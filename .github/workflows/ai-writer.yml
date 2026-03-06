@@ -1,0 +1,67 @@
+name: AI Content Writer
+
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: 'Article topic'
+        required: true
+        type: string
+      category:
+        description: 'Category'
+        required: true
+        type: string
+
+jobs:
+  write:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Write Article
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TOPIC: ${{ github.event.inputs.topic }}
+          CATEGORY: ${{ github.event.inputs.category }}
+        run: |
+          python -c "
+          import os
+          import requests
+          
+          TOPIC = os.environ.get('TOPIC')
+          CATEGORY = os.environ.get('CATEGORY')
+          API_KEY = os.environ.get('OPENROUTER_API_KEY')
+          
+          prompt = f'''Write a professional Arabic article about: {TOPIC}
+          Category: {CATEGORY}
+          Requirements:
+          - 800+ words
+          - Professional tone
+          - Include introduction, body sections, conclusion
+          - Use Arabic headings
+          - Include Saudi market statistics
+          Write in Arabic.'''
+          
+          url = 'https://openrouter.ai/api/v1/chat/completions'
+          headers = {
+              'Authorization': f'Bearer {API_KEY}',
+              'Content-Type': 'application/json'
+          }
+          data = {
+              'model': 'openchat/openchat-7b:free',
+              'messages': [{'role': 'user', 'content': prompt}],
+              'max_tokens': 2000
+          }
+          
+          r = requests.post(url, json=data, headers=headers, timeout=120)
+          if r.status_code == 200:
+              content = r.json()['choices'][0]['message']['content']
+              print(content)
+          "
