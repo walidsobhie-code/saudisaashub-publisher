@@ -1,0 +1,32 @@
+name: Social Media Posting
+
+on:
+  workflow_dispatch:
+    inputs:
+      article_url:
+        description: 'Article URL to share (optional - will fetch latest if empty)'
+        required: false
+        type: string
+  schedule:
+    # Every 6 hours as backup
+    - cron: '0 */6 * * *'
+
+jobs:
+  social-post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests feedparser
+
+      - name: Run social publisher
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py
