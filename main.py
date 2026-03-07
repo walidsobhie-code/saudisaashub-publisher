@@ -21,13 +21,9 @@ from urllib.parse import urlparse
 RSS_URL = "https://saudisaashub.pages.dev/feed.xml"
 STATE_FILE = "processed_articles.json"
 
-# Environment variables
+# Environment variables (Telegram only for manual posting)
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
-TWITTER_API_KEY = os.environ.get("TWITTER_API_KEY", "")
-TWITTER_API_SECRET = os.environ.get("TWITTER_API_SECRET", "")
-TWITTER_ACCESS_TOKEN = os.environ.get("TWITTER_ACCESS_TOKEN", "")
-LINKEDIN_TOKEN = os.environ.get("LINKEDIN_TOKEN", "")
 
 # Saudi hooks - question style (Engaging)
 HOOKS = [
@@ -99,6 +95,23 @@ def get_category_tags(title):
             break
 
     return " ".join(tags[:6])
+
+def generate_telegram_post(article):
+    """Generate Telegram post"""
+    hook = random.choice(HOOKS)
+    emoji = random.choice(EMOJI_SETS)
+
+    title = article['title'][:80]
+    link = article['link']
+    tags = get_category_tags(article['title'])
+
+    return f"""{hook} {emoji}
+
+{title}
+
+🔗 {link}
+
+{tags}"""
 
 def generate_twitter_post(article):
     """Generate Twitter/X post"""
@@ -209,54 +222,6 @@ def post_to_telegram(message):
         print(f"❌ Telegram error: {e}")
         return False
 
-def post_to_twitter(post):
-    """Post to Twitter/X (v2 API)"""
-    if not TWITTER_ACCESS_TOKEN:
-        print("⚠️ Missing Twitter credentials")
-        return False
-
-    url = "https://api.twitter.com/2/tweets"
-    headers = {
-        "Authorization": f"Bearer {TWITTER_ACCESS_TOKEN}",
-        "Content-Type": "application/json"
-    }
-
-    try:
-        response = requests.post(url, json={"text": post}, headers=headers, timeout=15)
-        return response.status_code == 201
-    except Exception as e:
-        print(f"❌ Twitter error: {e}")
-        return False
-
-def post_to_linkedin(post):
-    """Post to LinkedIn"""
-    if not LINKEDIN_TOKEN:
-        print("⚠️ Missing LinkedIn credentials")
-        return False
-
-    url = "https://api.linkedin.com/v2/ugcPosts"
-    headers = {
-        "Authorization": f"Bearer {LINKEDIN_TOKEN}",
-        "Content-Type": "application/json",
-        "X-Restli-Protocol-Version": "2.0.0"
-    }
-
-    try:
-        response = requests.post(url, json={
-            "author": "urn:li:person:YOUR_PERSON_URN",
-            "lifecycleState": "PUBLISHED",
-            "specificContent": {
-                "com.linkedin.ugc.ShareContent": {
-                    "shareCommentary": {"text": post},
-                    "shareMediaCategory": "ARTICLE"
-                }
-            }
-        }, headers=headers, timeout=15)
-        return response.status_code == 201
-    except Exception as e:
-        print(f"❌ LinkedIn error: {e}")
-        return False
-
 # ============ REPORTING ============
 
 def generate_platform_report(platforms):
@@ -271,32 +236,35 @@ def generate_platform_report(platforms):
     return report
 
 def format_social_media_package(article):
-    """Format complete social media package"""
-    package = {
-        'telegram': generate_telegram_post(article),
-        'twitter': generate_twitter_post(article),
-        'linkedin': generate_linkedin_post(article),
-        'facebook': generate_facebook_post(article),
-        'threads': generate_threads_post(article),
-        'whatsapp': generate_whatsapp_status(article)
-    }
+    """Format social media package for manual posting"""
+    # Generate content for manual posting
+    telegram_content = generate_telegram_post(article)
+    whatsapp_content = generate_whatsapp_status(article)
 
-    # Main Telegram message with all platforms
+    # Main Telegram message with ready-to-post content
     telegram_msg = f"""📢 **مقال جديد من SaudiSaaSHub**
 ━━━━━━━━━━━━━━━━━━━━━━
 
+📰 *{article['title']}*
+
+{article['summary']}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+📝 *جاهز للنشر:*
+
 🔵 **Twitter/X:**
-{package['telegram']}
+{telegram_content}
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
 💼 **LinkedIn:**
-{package['linkedin']}
+{generate_linkedin_post(article)}
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
 📘 **Facebook:**
-{package['facebook']}
+{generate_facebook_post(article)}
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -304,8 +272,11 @@ def format_social_media_package(article):
 
 #SaudiSaaS #التقنية_السعودية"""
 
-    package['telegram_full'] = telegram_msg
-    return package
+    return {
+        'telegram_full': telegram_msg,
+        'twitter': telegram_content,
+        'whatsapp': whatsapp_content
+    }
 
 # ============ MAIN FUNCTION ============
 
@@ -335,19 +306,11 @@ def main():
         # Generate social media package
         package = format_social_media_package(article)
 
-        # Send to Telegram
+        # Send to Telegram only (free)
         if post_to_telegram(package['telegram_full']):
             print("   ✅ Telegram: Posted")
         else:
             print("   ❌ Telegram: Failed")
-
-        # Post to Twitter
-        if post_to_twitter(package['twitter']):
-            print("   ✅ Twitter: Posted")
-
-        # Post to LinkedIn
-        if post_to_linkedin(package['linkedin']):
-            print("   ✅ LinkedIn: Posted")
 
         # Mark as processed
         processed.append(article['link'])
